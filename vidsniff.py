@@ -221,8 +221,16 @@ def ytdlp_download(url, extra_args, output_template=None):
         return False
 
 
-def direct_download(url, output):
+def direct_download(url, output, referer='https://www.google.com/'):
     """Download a direct CDN URL. Uses aria2c (16 connections) if available, else Python urllib."""
+    # Resolve %(ext)s for direct downloads (not handled by yt-dlp here)
+    if '%(ext)s' in output:
+        path_no_qs = url.split('?')[0]
+        ext = path_no_qs.rsplit('.', 1)[-1][:5] if '.' in path_no_qs else 'mp4'
+        output = output.replace('%(ext)s', ext)
+    if '%(title)s' in output:
+        output = output.replace('%(title)s', 'video')
+
     print(f'[*] Direct download → {output}')
     ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
 
@@ -233,7 +241,7 @@ def direct_download(url, output):
             '-x', '16', '-s', '16', '-k', '1M',
             '--file-allocation=none',
             '--user-agent', ua,
-            '--referer', 'https://www.google.com/',
+            '--referer', referer,
             '-o', output,
             url,
         ]
@@ -245,7 +253,7 @@ def direct_download(url, output):
             print('[*] aria2c failed, falling back to Python download...')
 
     # Fallback: single-threaded Python urllib with progress bar
-    req = urllib.request.Request(url, headers={'User-Agent': ua, 'Referer': 'https://www.google.com/'})
+    req = urllib.request.Request(url, headers={'User-Agent': ua, 'Referer': referer})
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
             total = int(resp.headers.get('Content-Length', 0))
@@ -506,7 +514,15 @@ def sniff_and_download(url, output_template, extra_ytdlp_args, timeout, domain_f
                         else:
                             downloaded.add(best['url'])
                             first_good_at = None
-                            _do_download(best['url'], output_template, extra_ytdlp_args)
+                            with _lock:
+                                alt_caps = [c for c in _captures if c['url'] != best['url']]
+                            _do_download(
+                                best['url'],
+                                output_template,
+                                extra_ytdlp_args,
+                                page_url=url,
+                                alt_caps=alt_caps,
+                            )
                             print(f'\n[*] Monitoring for more streams... (Ctrl+C to exit)')
 
             if time.time() > deadline:
@@ -528,28 +544,84 @@ def sniff_and_download(url, output_template, extra_ytdlp_args, timeout, domain_f
     return bool(downloaded)
 
 
-def _do_download(url, output_template, extra_args):
-    """Try yt-dlp first, then direct download."""
-    cmd = ['yt-dlp', '--no-playlist']
-    if output_template:
-        cmd += ['-o', output_template]
-    cmd += extra_args
-    cmd.append(url)
+def _resolve_output(output_template, url):
+    """Substitute yt-dlp template vars that won't be filled for direct/aria2c downloads."""
+    if '%(ext)s' in output_template:
+        path_no_qs = url.split('?')[0]
+        ext = path_no_qs.rsplit('.', 1)[-1][:5] if '.' in path_no_qs else 'mp4'
+        output_template = output_template.replace('%(ext)s', ext)
+    if '%(title)s' in output_template:
+        output_template = output_template.replace('%(title)s', 'video')
+    return output_template
+
+
+def _do_download(url, output_template, extra_args, page_url=None, alt_caps=None):
+    """
+    Try to download `url` using yt-dlp (with proper Referer header).
+    If yt-dlp fails, try each alternative captured URL in turn.
+    Falls back to direct download as last resort.
+
+    Args:
+        url:           The primary URL to try first.
+        output_template: yt-dlp output template string.
+        extra_args:    Extra yt-dlp CLI args (pass-through from user).
+        page_url:      The original video page URL — used as Referer header.
+        alt_caps:      Other captured stream entries to try if primary fails.
+    """
+    referer = page_url or 'https://www.google.com/'
+    alt_caps = [c for c in (alt_caps or []) if c['url'] != url and not is_ad(c['url'])]
+
+    use_aria = (aria2c_available()
+                and not any(a in extra_args for a in ('-x', '--extract-audio')))
+
+    def _run_ytdlp(target_url, out_tpl, with_aria):
+        cmd = ['yt-dlp', '--no-playlist',
+               '--add-header', f'Referer:{referer}']
+        if out_tpl:
+            cmd += ['-o', out_tpl]
+        if with_aria:
+            cmd += _aria2c_args()
+        cmd += extra_args
+        cmd.append(target_url)
+        try:
+            subprocess.run(cmd, check=True)
+            return True
+        except FileNotFoundError:
+            print('[!] yt-dlp not found. Install: pip install yt-dlp')
+            return False
+        except subprocess.CalledProcessError:
+            return False
+
+    # ── 1. Try primary URL with yt-dlp (+ aria2c) ───────────────────────────
     print(f'\n[*] Downloading: {url[:80]}')
-    print(f'[*] Running: yt-dlp {" ".join(extra_args)} ...')
-    try:
-        subprocess.run(cmd, check=True)
+    print(f'[*] Running yt-dlp{" + aria2c" if use_aria else ""} ...')
+    if _run_ytdlp(url, output_template, use_aria):
         print('[+] Download complete!')
         return True
-    except FileNotFoundError:
-        print('[!] yt-dlp not found. Install: pip install yt-dlp')
-        return False
-    except subprocess.CalledProcessError:
-        print('[*] yt-dlp failed, trying direct download...')
-        out = (output_template or '{slug}.mp4').replace('{slug}', 'video')
-        if '.' not in os.path.basename(out):
-            out += '.mp4'
-        return direct_download(url, out)
+
+    # If aria2c was used and failed, retry without it
+    if use_aria:
+        print('[*] aria2c path failed, retrying yt-dlp without it...')
+        if _run_ytdlp(url, output_template, False):
+            print('[+] Download complete!')
+            return True
+
+    # ── 2. Try alternative captured URLs (e.g. direct MP4 when playlist 403s) ─
+    for cap in alt_caps:
+        alt_url = cap['url']
+        print(f'[*] Primary failed — trying alternative: {alt_url[:70]}')
+        out = _resolve_output(output_template or '%(title)s.%(ext)s', alt_url)
+        if _run_ytdlp(alt_url, out, use_aria):
+            print('[+] Download complete!')
+            return True
+        # Direct download of this alternative
+        if direct_download(alt_url, out, referer):
+            return True
+
+    # ── 3. Last resort: direct download of primary URL ───────────────────────
+    print('[*] All yt-dlp attempts failed, trying direct download...')
+    out = _resolve_output(output_template or '%(title)s.%(ext)s', url)
+    return direct_download(url, out, referer)
 
 
 def _print_summary(caps):
