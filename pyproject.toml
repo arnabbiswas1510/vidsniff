@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vidsniff"
+version = "1.0.0"
+description = "Smart video downloader — yt-dlp wrapper + browser interception for protected sites"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+dependencies = ["yt-dlp>=2024.1.1"]
+
+[project.scripts]
+vidsniff = "vidsniff:main"
+
+[tool.setuptools]
+# Tells setuptools that vidsniff.py (a single module, not a package) is the source
+py-modules = ["vidsniff"]

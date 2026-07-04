@@ -4,11 +4,11 @@ set -e
 echo "[vidsniff setup]"
 
 echo ""
-echo "[1/2] Installing Python dependencies..."
+echo "[1/3] Installing Python dependencies..."
 pip install -r requirements.txt
 
 echo ""
-echo "[2/2] Installing aria2c (fast multi-connection downloader)..."
+echo "[2/3] Installing aria2c (fast multi-connection downloader)..."
 if command -v aria2c &>/dev/null; then
     echo "aria2c already installed."
 else
@@ -34,9 +34,13 @@ else
 fi
 
 echo ""
+echo "[3/3] Registering 'vidsniff' command on PATH..."
+pip install -e .
+
+echo ""
 echo "[OK] Setup complete!"
 echo ""
 echo "Usage:"
-echo "  python vidsniff.py \"https://youtube.com/watch?v=...\""
-echo "  python vidsniff.py \"https://youtu.be/...\" -x --audio-format ogg"
-echo "  python vidsniff.py \"https://bestjavporn.com/video/some-slug/\""
+echo "  vidsniff \"https://youtube.com/watch?v=...\""
+echo "  vidsniff \"https://youtu.be/...\" -x --audio-format ogg"
+echo "  vidsniff \"https://bestjavporn.com/video/some-slug/\""

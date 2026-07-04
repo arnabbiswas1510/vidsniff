@@ -1,3 +1,12 @@
+Metadata-Version: 2.4
+Name: vidsniff
+Version: 1.0.0
+Summary: Smart video downloader — yt-dlp wrapper + browser interception for protected sites
+License: MIT
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+Requires-Dist: yt-dlp>=2024.1.1
+
 # VidSniff
 
 **Smart universal video downloader** — a `yt-dlp` wrapper that adds browser-interception for sites that yt-dlp cannot handle natively (Cloudflare-protected players, obfuscated streams, etc.).
