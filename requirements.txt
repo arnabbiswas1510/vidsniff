@@ -1,3 +1,9 @@
 # vidsniff dependencies
-# Only yt-dlp is required. Everything else uses Python stdlib.
+# yt-dlp is the only pip dependency. Everything else uses Python stdlib.
 yt-dlp>=2024.1.1
+
+# aria2c is optional but strongly recommended for much faster downloads (16 parallel connections).
+# Install on Windows:  winget install aria2.aria2
+#                  or: choco install aria2       (if you have Chocolatey)
+# Install on Debian/Ubuntu/WSL:  sudo apt install aria2
+# Install on macOS:  brew install aria2

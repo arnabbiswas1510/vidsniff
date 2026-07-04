@@ -117,8 +117,63 @@ def sanitize_filename(name):
 
 
 # ─────────────────────────────────────────────
-# yt-dlp helpers
+# yt-dlp + aria2c helpers
 # ─────────────────────────────────────────────
+_aria2c_checked = False   # Only attempt auto-install once per run
+
+
+def _try_install_aria2c():
+    """Attempt to install aria2c via system package manager (silent)."""
+    system = os.name   # 'nt' = Windows, 'posix' = Linux/Mac/WSL
+    try:
+        if system == 'nt':
+            subprocess.run(
+                ['winget', 'install', 'aria2.aria2',
+                 '--accept-package-agreements', '--accept-source-agreements'],
+                capture_output=True, timeout=60)
+        else:
+            # Detect package manager
+            for pkg_cmd in [
+                ['apt-get', 'install', '-y', 'aria2'],
+                ['brew', 'install', 'aria2'],
+                ['yum', 'install', '-y', 'aria2'],
+            ]:
+                if subprocess.run(['which', pkg_cmd[0]], capture_output=True).returncode == 0:
+                    subprocess.run(['sudo'] + pkg_cmd, capture_output=True, timeout=120)
+                    break
+    except Exception:
+        pass
+
+
+def aria2c_available():
+    """Return True if aria2c is available. Attempts auto-install on first call if missing."""
+    global _aria2c_checked
+    try:
+        subprocess.run(['aria2c', '--version'], capture_output=True, timeout=5)
+        return True
+    except FileNotFoundError:
+        if not _aria2c_checked:
+            _aria2c_checked = True
+            print('[*] aria2c not found — attempting auto-install...')
+            _try_install_aria2c()
+            # Re-check after install attempt
+            try:
+                subprocess.run(['aria2c', '--version'], capture_output=True, timeout=5)
+                print('[+] aria2c installed successfully.')
+                return True
+            except FileNotFoundError:
+                print('[*] aria2c not available — using single-threaded download.')
+        return False
+    except subprocess.TimeoutExpired:
+        return False
+
+
+def _aria2c_args():
+    """yt-dlp flags that delegate downloading to aria2c (16 parallel connections)."""
+    return ['--downloader', 'aria2c',
+            '--downloader-args', 'aria2c:-x 16 -s 16 -k 1M --file-allocation=none']
+
+
 def ytdlp_supports(url):
     """Return True if yt-dlp can extract this URL natively."""
     try:
@@ -135,6 +190,12 @@ def ytdlp_download(url, extra_args, output_template=None):
     cmd = ['yt-dlp', '--no-playlist']
     if output_template:
         cmd += ['-o', output_template]
+    # Inject aria2c for faster multi-connection downloads (skip for audio extraction
+    # since aria2c doesn't help there and can conflict with post-processors)
+    use_aria = aria2c_available() and not any(a in extra_args for a in ('-x', '--extract-audio'))
+    if use_aria:
+        cmd += _aria2c_args()
+        print(f'[*] aria2c detected — using 16 parallel connections')
     cmd += extra_args
     cmd.append(url)
     print(f'[*] Running: yt-dlp {" ".join(extra_args)} ...')
@@ -145,13 +206,45 @@ def ytdlp_download(url, extra_args, output_template=None):
         print('[!] yt-dlp not found. Install: pip install yt-dlp')
         return False
     except subprocess.CalledProcessError:
+        if use_aria:
+            # aria2c can sometimes fail on odd CDN configs — retry without it
+            print('[*] aria2c download failed, retrying without it...')
+            cmd2 = ['yt-dlp', '--no-playlist']
+            if output_template: cmd2 += ['-o', output_template]
+            cmd2 += extra_args
+            cmd2.append(url)
+            try:
+                subprocess.run(cmd2, check=True)
+                return True
+            except subprocess.CalledProcessError:
+                pass
         return False
 
 
 def direct_download(url, output):
-    """Direct HTTP download with progress bar. Fallback when yt-dlp fails."""
+    """Download a direct CDN URL. Uses aria2c (16 connections) if available, else Python urllib."""
     print(f'[*] Direct download → {output}')
     ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+
+    if aria2c_available():
+        print(f'[*] aria2c detected — using 16 parallel connections')
+        cmd = [
+            'aria2c',
+            '-x', '16', '-s', '16', '-k', '1M',
+            '--file-allocation=none',
+            '--user-agent', ua,
+            '--referer', 'https://www.google.com/',
+            '-o', output,
+            url,
+        ]
+        try:
+            subprocess.run(cmd, check=True)
+            print(f'[+] Saved: {output}')
+            return True
+        except subprocess.CalledProcessError:
+            print('[*] aria2c failed, falling back to Python download...')
+
+    # Fallback: single-threaded Python urllib with progress bar
     req = urllib.request.Request(url, headers={'User-Agent': ua, 'Referer': 'https://www.google.com/'})
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
@@ -538,12 +631,23 @@ Examples:
         print(f'    Make sure the "extension/" folder is next to vidsniff.py')
         sys.exit(1)
 
+    # Auto-infer domain filter from the URL if --domain not specified.
+    # Extracts the registered domain (last 2 hostname parts), which covers
+    # both www.site.com and video.site.com frames automatically.
+    domain_filter = args.domain
+    if not domain_filter:
+        host = urlparse(url).netloc
+        parts = host.split('.')
+        registered = '.'.join(parts[-2:]) if len(parts) >= 2 else host
+        domain_filter = [registered]
+        print(f'[*] Auto domain filter: {registered} (use --domain to override)')
+
     sniff_and_download(
         url=url,
         output_template=output,
         extra_ytdlp_args=extra,
         timeout=args.timeout,
-        domain_filter=args.domain or [],
+        domain_filter=domain_filter,
     )
 
 
