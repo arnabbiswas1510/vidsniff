@@ -1,0 +1,3 @@
+# vidsniff dependencies
+# Only yt-dlp is required. Everything else uses Python stdlib.
+yt-dlp>=2024.1.1

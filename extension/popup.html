@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Video Sniff</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    width: 480px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #0f1117;
+    color: #e2e8f0;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background: #1a1f2e;
+    border-bottom: 1px solid #2d3748;
+  }
+  h1 { font-size: 14px; font-weight: 600; color: #7c3aed; }
+  .count { font-size: 12px; color: #94a3b8; }
+  .btn {
+    font-size: 11px; padding: 4px 10px; border-radius: 4px; border: none;
+    cursor: pointer; font-weight: 500;
+  }
+  .btn-clear { background: #ef4444; color: white; }
+  .btn-copy { background: #7c3aed; color: white; }
+  #captures { max-height: 420px; overflow-y: auto; }
+  .empty { padding: 24px; text-align: center; color: #4a5568; font-size: 13px; }
+  .item {
+    padding: 10px 14px;
+    border-bottom: 1px solid #1a1f2e;
+    cursor: pointer;
+    transition: background 0.1s;
+  }
+  .item:hover { background: #1a1f2e; }
+  .item-url {
+    font-size: 11px; color: #a78bfa; word-break: break-all;
+    font-family: monospace;
+  }
+  .item-meta { font-size: 10px; color: #4a5568; margin-top: 3px; }
+  .item-type { display: inline-block; padding: 1px 5px; border-radius: 3px;
+    font-size: 9px; font-weight: 600; margin-right: 4px; }
+  .type-m3u8 { background: #7c3aed; color: white; }
+  .type-mp4  { background: #2563eb; color: white; }
+  .type-ts   { background: #065f46; color: white; }
+  .type-other { background: #374151; color: #9ca3af; }
+  .item-copy {
+    float: right; font-size: 10px; color: #6b7280; padding: 1px 6px;
+    border: 1px solid #374151; border-radius: 3px; background: none;
+    cursor: pointer; margin-left: 8px;
+  }
+  .item-copy:hover { color: #a78bfa; border-color: #7c3aed; }
+  #status { font-size: 11px; color: #10b981; padding: 6px 14px;
+    background: #052e16; border-bottom: 1px solid #1a1f2e; display: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🎬 Video Sniff</h1>
+  <div style="display:flex;gap:6px;align-items:center">
+    <span class="count" id="count">0 streams</span>
+    <button class="btn btn-copy" id="btnCopyAll">Copy All</button>
+    <button class="btn btn-clear" id="btnClear">Clear</button>
+  </div>
+</header>
+<div id="status"></div>
+<div id="captures">
+  <div class="empty" id="empty">No video streams captured yet.<br>Navigate to a video page and press play.</div>
+</div>
+<script src="popup.js"></script>
+</body>
+</html>

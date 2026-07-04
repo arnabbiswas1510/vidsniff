@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+
+# Downloads (don't commit video files)
+*.mp4
+*.mkv
+*.webm
+*.flv
+*.m4v
+*.mp3
+*.ogg
+*.m3u8
+*.ts
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+*.swp

@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "VidSniff",
+  "version": "2.0",
+  "description": "Captures video stream URLs and sends them to vidsniff for download.",
+  "permissions": [
+    "webRequest",
+    "storage",
+    "tabs"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "VidSniff"
+  }
+}
