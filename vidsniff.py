@@ -521,6 +521,7 @@ def sniff_and_download(url, output_template, extra_ytdlp_args, timeout, domain_f
                                 output_template,
                                 extra_ytdlp_args,
                                 page_url=url,
+                                frame_url=best.get('frameUrl', ''),
                                 alt_caps=alt_caps,
                             )
                             print(f'\n[*] Monitoring for more streams... (Ctrl+C to exit)')
@@ -555,28 +556,39 @@ def _resolve_output(output_template, url):
     return output_template
 
 
-def _do_download(url, output_template, extra_args, page_url=None, alt_caps=None):
+def _do_download(url, output_template, extra_args, page_url=None, frame_url=None, alt_caps=None):
     """
     Try to download `url` using yt-dlp (with proper Referer header).
     If yt-dlp fails, try each alternative captured URL in turn.
     Falls back to direct download as last resort.
 
     Args:
-        url:           The primary URL to try first.
+        url:             The primary URL to try first.
         output_template: yt-dlp output template string.
-        extra_args:    Extra yt-dlp CLI args (pass-through from user).
-        page_url:      The original video page URL — used as Referer header.
-        alt_caps:      Other captured stream entries to try if primary fails.
+        extra_args:      Extra yt-dlp CLI args (pass-through from user).
+        page_url:        The main video page URL (bestjavporn.com/...).
+        frame_url:       The iframe/frame URL the stream came from — used as
+                         Referer (more accurate than the main page URL).
+        alt_caps:        Other captured stream entries to try if primary fails.
     """
-    referer = page_url or 'https://www.google.com/'
+    # Use the capture's own frame URL as Referer — CDNs often validate this.
+    # Falls back to main page URL, then google.com.
+    referer = frame_url or page_url or 'https://www.google.com/'
     alt_caps = [c for c in (alt_caps or []) if c['url'] != url and not is_ad(c['url'])]
 
     use_aria = (aria2c_available()
                 and not any(a in extra_args for a in ('-x', '--extract-audio')))
 
-    def _run_ytdlp(target_url, out_tpl, with_aria):
+    # Realistic Chrome UA — some CDNs block known downloader UAs
+    chrome_ua = ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+                 'AppleWebKit/537.36 (KHTML, like Gecko) '
+                 'Chrome/125.0.0.0 Safari/537.36')
+
+    def _run_ytdlp(target_url, out_tpl, with_aria, cap_referer=None):
+        r = cap_referer or referer
         cmd = ['yt-dlp', '--no-playlist',
-               '--add-header', f'Referer:{referer}']
+               '--add-header', f'Referer:{r}',
+               '--add-header', f'User-Agent:{chrome_ua}']
         if out_tpl:
             cmd += ['-o', out_tpl]
         if with_aria:
@@ -594,6 +606,7 @@ def _do_download(url, output_template, extra_args, page_url=None, alt_caps=None)
 
     # ── 1. Try primary URL with yt-dlp (+ aria2c) ───────────────────────────
     print(f'\n[*] Downloading: {url[:80]}')
+    print(f'[*] Referer: {referer[:60]}')
     print(f'[*] Running yt-dlp{" + aria2c" if use_aria else ""} ...')
     if _run_ytdlp(url, output_template, use_aria):
         print('[+] Download complete!')
@@ -606,16 +619,31 @@ def _do_download(url, output_template, extra_args, page_url=None, alt_caps=None)
             print('[+] Download complete!')
             return True
 
-    # ── 2. Try alternative captured URLs (e.g. direct MP4 when playlist 403s) ─
+    # ── 2. Try alternative captured URLs, skipping known-small previews ──────
     for cap in alt_caps:
         alt_url = cap['url']
-        print(f'[*] Primary failed — trying alternative: {alt_url[:70]}')
+        alt_sz  = cap.get('size', 0)
+        alt_ref = cap.get('frameUrl', '') or page_url or referer
+
+        # Skip captured URLs that are already known to be tiny previews
+        if alt_sz and alt_sz < MIN_DOWNLOAD_MB * 1024 * 1024:
+            print(f'[*] Skipping {size_str(alt_sz)} alt URL (preview): {alt_url[:60]}')
+            continue
+        # Probe if size unknown
+        if not alt_sz:
+            alt_sz = probe_size(alt_url)
+            cap['size'] = alt_sz
+        if alt_sz and alt_sz < MIN_DOWNLOAD_MB * 1024 * 1024:
+            print(f'[*] Skipping {size_str(alt_sz)} alt URL (preview): {alt_url[:60]}')
+            continue
+
+        print(f'[*] Primary failed — trying alternative ({size_str(alt_sz)}): {alt_url[:65]}')
         out = _resolve_output(output_template or '%(title)s.%(ext)s', alt_url)
-        if _run_ytdlp(alt_url, out, use_aria):
+        if _run_ytdlp(alt_url, out, use_aria, cap_referer=alt_ref):
             print('[+] Download complete!')
             return True
         # Direct download of this alternative
-        if direct_download(alt_url, out, referer):
+        if direct_download(alt_url, out, alt_ref):
             return True
 
     # ── 3. Last resort: direct download of primary URL ───────────────────────
