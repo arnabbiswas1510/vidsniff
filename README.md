@@ -34,11 +34,12 @@ chmod +x setup.sh && ./setup.sh
 ```
 
 The setup script:
-1. Runs `pip install -e .` — registers `vidsniff` as a system command
-2. Adds the Python scripts directory to your `PATH` permanently (`setx` on Windows, updates `.bashrc`/`.zshrc` on Linux/Mac)
-3. Installs `aria2c` via `winget` / `apt` / `brew` for faster downloads
+1. Creates a `.venv` virtualenv inside the project dir (avoids PEP 668 system-pip restrictions on Debian/Ubuntu/WSL)
+2. Installs `vidsniff` + `yt-dlp` into the venv
+3. Adds the venv's `bin/` to your `PATH` permanently (`setx` on Windows, updates `.bashrc`/`.zshrc` on Linux/Mac)
+4. Installs `aria2c` via `winget` / `apt` / `brew` for faster downloads
 
-> **After setup, open a new terminal.** Then `vidsniff` works from any directory, forever.
+> **After setup, open a new terminal.** Then `vidsniff` works from any directory, forever. No sudo needed.
 
 ---
 
