@@ -5,6 +5,9 @@ __pycache__/
 .venv/
 venv/
 env/
+*.egg-info/
+dist/
+build/
 
 # Downloads (don't commit video files)
 *.mp4

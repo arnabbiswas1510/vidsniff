@@ -1,9 +1,0 @@
-README.md
-pyproject.toml
-vidsniff.py
-vidsniff.egg-info/PKG-INFO
-vidsniff.egg-info/SOURCES.txt
-vidsniff.egg-info/dependency_links.txt
-vidsniff.egg-info/entry_points.txt
-vidsniff.egg-info/requires.txt
-vidsniff.egg-info/top_level.txt
