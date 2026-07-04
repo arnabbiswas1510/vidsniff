@@ -640,23 +640,12 @@ def _do_download(url, output_template, extra_args, page_url=None, frame_url=None
             print('[+] Download complete!')
             return True
 
-    # ── 2. Try alternative captured URLs, skipping known-small previews ──────
+    # ── 2. Try alternative captured URLs, in order ───────────────────────────
+    # No size-gating here — if the primary failed we try everything we have.
     for cap in alt_caps:
         alt_url = cap['url']
         alt_sz  = cap.get('size', 0)
         alt_ref = cap.get('frameUrl', '') or page_url or referer
-
-        # Skip captured URLs that are already known to be tiny previews
-        if alt_sz and alt_sz < MIN_DOWNLOAD_MB * 1024 * 1024:
-            print(f'[*] Skipping {size_str(alt_sz)} alt URL (preview): {alt_url[:60]}')
-            continue
-        # Probe if size unknown
-        if not alt_sz:
-            alt_sz = probe_size(alt_url)
-            cap['size'] = alt_sz
-        if alt_sz and alt_sz < MIN_DOWNLOAD_MB * 1024 * 1024:
-            print(f'[*] Skipping {size_str(alt_sz)} alt URL (preview): {alt_url[:60]}')
-            continue
 
         print(f'[*] Primary failed — trying alternative ({size_str(alt_sz)}): {alt_url[:65]}')
         out = _resolve_output(output_template or '%(title)s.%(ext)s', alt_url)
