@@ -15,19 +15,30 @@ No manual Chrome extension installation needed. No CDP/automation detection.
 
 - Python 3.9+
 - Google Chrome (for sniff mode)
-- `yt-dlp` (installed by setup script)
+- `yt-dlp` and `aria2c` — installed automatically by the setup script
 
-## Setup
+## Install (one-time, any machine)
 
 **Windows:**
 ```bat
+git clone git@github.com:arnabbiswas1510/vidsniff.git
+cd vidsniff
 setup.bat
 ```
 
 **Linux / macOS / WSL:**
 ```bash
+git clone git@github.com:arnabbiswas1510/vidsniff.git
+cd vidsniff
 chmod +x setup.sh && ./setup.sh
 ```
+
+The setup script:
+1. Runs `pip install -e .` — registers `vidsniff` as a system command
+2. Adds the Python scripts directory to your `PATH` permanently (`setx` on Windows, updates `.bashrc`/`.zshrc` on Linux/Mac)
+3. Installs `aria2c` via `winget` / `apt` / `brew` for faster downloads
+
+> **After setup, open a new terminal.** Then `vidsniff` works from any directory, forever.
 
 ---
 
