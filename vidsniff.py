@@ -353,6 +353,7 @@ def pick_best(caps, skipped):
 _captures = []
 _lock = threading.Lock()
 _allowed_domains = []
+_filtered_domains = set()   # domains blocked by filter (for diagnostics)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -384,9 +385,16 @@ class Handler(BaseHTTPRequestHandler):
                 return self._ok(b'skip')
 
             frame_url = entry.get('frameUrl', '') or ''
+
             if _allowed_domains:
                 host = urlparse(frame_url).netloc
-                if not any(d in host for d in _allowed_domains):
+                # Only filter if we actually HAVE a frame host.
+                # Empty frameUrl means no initiator was set (e.g. the request
+                # came directly from a page script) — let these through.
+                if host and not any(d in host for d in _allowed_domains):
+                    # Track which domains are being filtered for debugging
+                    with _lock:
+                        _filtered_domains.add(host)
                     return self._ok(b'filtered')
 
             with _lock:
@@ -527,8 +535,21 @@ def sniff_and_download(url, output_template, extra_ytdlp_args, timeout, domain_f
                             print(f'\n[*] Monitoring for more streams... (Ctrl+C to exit)')
 
             if time.time() > deadline:
-                if not any(not is_ad(c['url']) for c in _captures):
+                with _lock:
+                    caps_now = list(_captures)
+                if not any(not is_ad(c['url']) for c in caps_now):
                     print(f'\n[!] Timed out — no main video streams captured.')
+                    with _lock:
+                        filt = set(_filtered_domains)
+                    if filt:
+                        print(f'\n[*] The domain filter blocked streams from these frame domains:')
+                        for d in sorted(filt):
+                            print(f'       {d}')
+                        suggest = ' '.join(sorted(filt))
+                        print(f'\n    Try adding them with:')
+                        print(f'      vidsniff "{url}" --domain {suggest}')
+                        print(f'    Or disable filtering entirely:')
+                        print(f'      vidsniff "{url}" --no-filter')
                 break
 
     except KeyboardInterrupt:
@@ -695,6 +716,9 @@ Examples:
     ap.add_argument('--domain', nargs='+', metavar='DOMAIN',
                     help='Only capture streams from these frame domains (sniff mode). '
                          'Filters other open tabs. E.g.: --domain bestjavporn.com')
+    ap.add_argument('--no-filter', action='store_true',
+                    help='Disable domain filter entirely. Captures ALL video requests '
+                         'from ALL open tabs. Useful when auto-filter blocks the player.')
     ap.add_argument('-o', '--output', metavar='TEMPLATE',
                     help='Output filename template. Default: derived from URL slug. '
                          'Passed to yt-dlp as-is, or used for direct downloads.')
@@ -731,16 +755,22 @@ Examples:
         print(f'    Make sure the "extension/" folder is next to vidsniff.py')
         sys.exit(1)
 
-    # Auto-infer domain filter from the URL if --domain not specified.
-    # Extracts the registered domain (last 2 hostname parts), which covers
-    # both www.site.com and video.site.com frames automatically.
-    domain_filter = args.domain
-    if not domain_filter:
+    # Domain filter: --no-filter disables it, --domain overrides auto-infer.
+    # Auto-infer extracts the registered domain from the URL so streams from
+    # video.bestjavporn.com are captured but other open tabs are filtered out.
+    domain_filter = []
+    if getattr(args, 'no_filter', False):
+        print(f'[*] Domain filter: disabled (--no-filter)')
+    elif args.domain:
+        domain_filter = args.domain
+        print(f'[*] Domain filter: {" ".join(domain_filter)}')
+    else:
         host = urlparse(url).netloc
         parts = host.split('.')
         registered = '.'.join(parts[-2:]) if len(parts) >= 2 else host
         domain_filter = [registered]
-        print(f'[*] Auto domain filter: {registered} (use --domain to override)')
+        print(f'[*] Auto domain filter: {registered}')
+        print(f'    (use --domain X to override, or --no-filter to capture everything)')
 
     sniff_and_download(
         url=url,
